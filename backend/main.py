@@ -9,6 +9,7 @@ SCOPES = [
     'user-read-playback-state', 'user-read-recently-played',
     'user-read-currently-playing'
 ]
+RECOMMENDATION_LIMIT = 5
 
 app = FastAPI()
 
@@ -82,16 +83,18 @@ def get_track_soundwave(track_id: str) -> dict:
 
 
 @app.get('/tracks/{track_id}/recommendations')
-def get_recommendations(track_id: str, limit: int = 10) -> dict:
+def get_recommendations(track_id: str, limit: int = RECOMMENDATION_LIMIT) -> dict:
     return get_track_recommendation_helper(track_id, limit)
 
 
 @app.get('/me/player/currently-playing/recommendations')
-def get_current_track_recommendations(limit: int = 10) -> dict:
+def get_current_track_recommendations(limit: int = RECOMMENDATION_LIMIT) -> dict:
     return get_track_recommendation_helper(limit=limit)
 
 
-def get_track_recommendation_helper(track_id: str = None, limit: int = 10) -> dict:
+def get_track_recommendation_helper(track_id: str = None,
+                                    limit: int = RECOMMENDATION_LIMIT
+                                    ) -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
 
     if track_id is None:
@@ -186,3 +189,41 @@ def get_current_track_playing() -> dict:
 def get_recently_played() -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
     return sp.current_user_recently_played()
+
+
+@app.get('/me/player/recently-played/recommendations')
+def get_recently_played_recommendations(lookback_limit: int = 3,
+                                        rec_limit: int = RECOMMENDATION_LIMIT
+                                        ) -> dict:
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
+    recently_played_tracks = sp.current_user_recently_played(
+        limit=lookback_limit)['items']
+
+    recently_played_ids = [item['track']['id']
+                           for item in recently_played_tracks]
+
+    recently_played_features = sp.audio_features(recently_played_ids)
+
+    rec_tracks = sp.recommendations(seed_tracks=recently_played_ids,
+                                    limit=rec_limit
+                                    )['tracks']
+    import pdb
+    pdb.set_trace()
+    rec_features = sp.audio_features(
+        [track['id'] for track in rec_tracks])
+
+    recommendations = []
+    for i, track_feature in enumerate(rec_features):
+        recommendations.append(
+            format_track_and_features(rec_tracks[i], track_feature)
+        )
+
+    formatted_recent_tracks = []
+    for i, item in enumerate(recently_played_tracks):
+        formatted_recent_tracks.append(format_track_and_features(
+            item['track'], recently_played_features[i]))
+
+    return {
+        'recent_tracks': formatted_recent_tracks,
+        'recommendations': recommendations
+    }
