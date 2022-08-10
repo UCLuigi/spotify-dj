@@ -51,7 +51,7 @@ def get_track_analysis(track_id: str) -> dict:
 
 
 @app.get('/audio-analysis/{track_id}/soundwave')
-def get_track_soundwave(track_id: str) -> dict:
+def get_track_soundwave(track_id: str) -> list:
     """
     https://medium.com/swlh/creating-waveforms-out-of-spotify-tracks-b22030dd442b
     """
@@ -191,24 +191,41 @@ def get_recently_played() -> dict:
     return sp.current_user_recently_played()
 
 
+@app.get('/recommendations/available-genre-seeds')
+def get_genre_seeds() -> list:
+    sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+    return sp.recommendation_genre_seeds()
+
+
 @app.get('/me/player/recently-played/recommendations')
 def get_recently_played_recommendations(lookback_limit: int = 3,
                                         rec_limit: int = RECOMMENDATION_LIMIT
                                         ) -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
-    recently_played_tracks = sp.current_user_recently_played(
+
+    recently_played_tracks = []
+    cur_track = sp.current_user_playing_track()
+    if cur_track is not None:
+        cur_track = {'track': cur_track['item']}
+        recently_played_tracks.append(cur_track)
+
+    recently_played_tracks += sp.current_user_recently_played(
         limit=lookback_limit)['items']
+
+    if len(recently_played_tracks) > 5:
+        recently_played_tracks = recently_played_tracks[:5]
 
     recently_played_ids = [item['track']['id']
                            for item in recently_played_tracks]
 
     recently_played_features = sp.audio_features(recently_played_ids)
 
+    limits = get_feature_limits_helper(recently_played_features)
+
     rec_tracks = sp.recommendations(seed_tracks=recently_played_ids,
                                     limit=rec_limit
                                     )['tracks']
-    import pdb
-    pdb.set_trace()
+
     rec_features = sp.audio_features(
         [track['id'] for track in rec_tracks])
 
@@ -227,3 +244,19 @@ def get_recently_played_recommendations(lookback_limit: int = 3,
         'recent_tracks': formatted_recent_tracks,
         'recommendations': recommendations
     }
+
+
+def get_feature_limits_helper(track_features) -> dict:
+    limits = {
+        'tempo': {'min': float('inf'), 'max': float('-inf')},
+        'danceability': {'min': float('inf'), 'max': float('-inf')},
+        'energy': {'min': float('inf'), 'max': float('-inf')}
+    }
+
+    for limit in limits:
+        feature_limits = [feature[limit] for feature in track_features]
+        limits[limit]['average'] = sum(feature_limits) / len(track_features)
+        limits[limit]['min'] = min(feature_limits)
+        limits[limit]['max'] = max(feature_limits)
+
+    return limits
