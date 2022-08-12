@@ -15,9 +15,9 @@ app = FastAPI()
 
 
 @app.get('/search')
-def search(q: str) -> dict:
+def search(q: str, limit: int = 10, search_type: str = 'track,album,artist') -> dict:
     sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
-    return sp.search(q)
+    return sp.search(q, limit=limit, type=search_type)
 
 
 @app.get('/tracks')
@@ -84,17 +84,19 @@ def get_track_soundwave(track_id: str) -> list:
 
 @app.get('/tracks/{track_id}/recommendations')
 def get_recommendations(track_id: str, limit: int = RECOMMENDATION_LIMIT) -> dict:
-    return get_track_recommendation_helper(track_id, limit)
+    return get_track_recommendation_helper(track_id=track_id, limit=limit)
 
 
 @app.get('/me/player/currently-playing/recommendations')
-def get_current_track_recommendations(limit: int = RECOMMENDATION_LIMIT) -> dict:
-    return get_track_recommendation_helper(limit=limit)
+def get_current_track_recommendations(limit: int = RECOMMENDATION_LIMIT,
+                                      genres: str = None) -> dict:
+    return get_track_recommendation_helper(limit=limit,
+                                           genres=genres.split(',') if genres else None)
 
 
 def get_track_recommendation_helper(track_id: str = None,
-                                    limit: int = RECOMMENDATION_LIMIT
-                                    ) -> dict:
+                                    limit: int = RECOMMENDATION_LIMIT,
+                                    genres: list = None) -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
 
     if track_id is None:
@@ -106,6 +108,7 @@ def get_track_recommendation_helper(track_id: str = None,
     cur_track_features = sp.audio_features([cur_track_id])[0]
 
     rec_tracks = sp.recommendations(seed_tracks=[cur_track_id],
+                                    seed_genres=genres,
                                     limit=limit,
                                     target_tempo=cur_track_features['tempo'],
                                     target_danceability=cur_track_features['danceability'],
@@ -162,13 +165,13 @@ def get_playlist_tracks(playlist_id: str) -> dict:
 
 
 @app.get('/me/top/artists')
-def get_top_artists(limit: int = 20, time_range: str = 'medium_term') -> dict:
+def get_top_artists(limit: int = 10, time_range: str = 'medium_term') -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
     return sp.current_user_top_artists(limit=limit, time_range=time_range)
 
 
 @app.get('/me/top/tracks')
-def get_top_tracks(limit: int = 20, time_range: str = 'medium_term') -> dict:
+def get_top_tracks(limit: int = 10, time_range: str = 'medium_term') -> dict:
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=SCOPES))
     return sp.current_user_top_tracks(limit=limit, time_range=time_range)
 
